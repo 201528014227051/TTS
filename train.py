@@ -26,7 +26,7 @@ from utils.model import get_param_size
 from utils.visual import plot_alignment, plot_spectrogram
 from datasets.LJSpeech import LJSpeechDataset
 from models.tacotron import Tacotron
-from layers.losses import L1LossMasked
+from layers.losses import MSELossMasked
 
 torch.manual_seed(1)
 use_cuda = torch.cuda.is_available()
@@ -78,7 +78,7 @@ def train(model, criterion, criterion_st, data_loader, optimizer, optimizer_st, 
         mel_input = data[3]
         mel_lengths = data[4]
         stop_targets = data[5]
-        
+
         # set stop targets view, we predict a single stop token per r frames prediction
         stop_targets = stop_targets.view(text_input.shape[0], stop_targets.size(1) // c.r, -1)
         stop_targets = (stop_targets.sum(2) > 0.0).unsqueeze(2).float()
@@ -89,10 +89,10 @@ def train(model, criterion, criterion_st, data_loader, optimizer, optimizer_st, 
         # setup lr
         current_lr = lr_decay(c.lr, current_step, c.warmup_steps)
         current_lr_st = lr_decay(c.lr, current_step, c.warmup_steps)
-        
+
         for params_group in optimizer.param_groups:
             params_group['lr'] = current_lr
-            
+
         for params_group in optimizer_st.param_groups:
             params_group['lr'] = current_lr_st
 
@@ -106,7 +106,7 @@ def train(model, criterion, criterion_st, data_loader, optimizer, optimizer_st, 
             mel_lengths = mel_lengths.cuda()
             linear_input = linear_input.cuda()
             stop_targets = stop_targets.cuda()
-            
+
         # forward pass
         mel_output, linear_output, alignments, stop_tokens =\
             model.forward(text_input, mel_input)
@@ -128,7 +128,7 @@ def train(model, criterion, criterion_st, data_loader, optimizer, optimizer_st, 
             print(" | > Iteration skipped!!")
             continue
         optimizer.step()
-        
+
         # backpass and check the grad norm for stop loss
         stop_loss.backward()
         grad_norm_st, skip_flag = check_update(model.module.decoder.stopnet, 0.5, 100)
@@ -232,7 +232,7 @@ def evaluate(model, criterion, criterion_st, data_loader, current_step):
             mel_input = data[3]
             mel_lengths = data[4]
             stop_targets = data[5]
-            
+
             # set stop targets view, we predict a single stop token per r frames prediction
             stop_targets = stop_targets.view(text_input.shape[0], stop_targets.size(1) // c.r, -1)
             stop_targets = (stop_targets.sum(2) > 0.0).unsqueeze(2).float()
@@ -365,8 +365,8 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=c.lr)
     optimizer_st = optim.Adam(model.decoder.stopnet.parameters(), lr=c.lr)
 
-    criterion = L1LossMasked()
-    criterion_st = nn.BCELoss()  
+    criterion = MSELossMasked()
+    criterion_st = nn.BCELoss()
 
     if args.restore_path:
         checkpoint = torch.load(args.restore_path)
